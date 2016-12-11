@@ -1,0 +1,22 @@
+version: '2'
+
+services:
+
+  rproxy:
+    extends:
+      file: ../rpxoy/docker-compose.yml
+      service: rproxy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - APT_SERVER_NAME=apt.sra.gx
+    volumes:
+      - ./conf.d:/etc/apache2/conf.d
+
+  apt.sra.gx:
+    image: sameersbn/apt-cacher-ng
+    expose:
+      - "3142"
+    volumes:
+      - ./cache:/var/cache/apt-cacher-ng

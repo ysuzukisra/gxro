@@ -1,0 +1,8 @@
+FROM debian
+
+RUN set -x \
+  && apt-get update \
+  && apt-get install -y apache2-utils openssl vim curl \
+  && echo done.
+
+CMD tail -f /dev/null

@@ -1,0 +1,116 @@
+#
+# http://deeeet.com/writing/2014/10/02/docker-private-registry-auth/
+#
+
+version: '2'
+
+services:
+
+  rproxy:
+    extends:
+      file: ../rproxy/docker-compose.yml
+      service: rproxy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - APT_SERVER_NAME=apt.sra.gx
+      - DOCKER_HUB_SERVER_NAME=hub.sra.gx
+    volumes:
+      - ./auth:/auth
+      - ./cert:/cert
+      - ./conf.d:/etc/apache2/conf.d
+
+  hub.sra.gx:
+    image: registry:2
+    expose:
+      - "5000"
+    volumes:
+      - ./registry:/tmp/registry-dev/
+
+  apt.sra.gx:
+    extends:
+      file: ../apt.sra.gx/docker-compose.yml
+      service: apt.sra.gx
+
+  auth-utils:
+    build:
+      context: .
+      dockerfile: Dockerfile.auth-utils
+    image: auth-utils
+    environment:
+      - http_proxy=http://apt.sra.gx:3142/
+      - https_proxy=http://apt.sra.gx:3142/
+    volumes_from:
+      - rproxy
+
+    #
+    # ### 構築方法
+    # 
+    # docker-compose up -d apt.sra.gx
+    # docker-compose build auth-utils
+    # docker-compose up -d auth-utils
+    # （下記のauth,certの設定）
+    # docker-compose up -d
+    #
+    # ### authの設定
+    #
+    # http://deeeet.com/writing/2014/10/02/docker-private-registry-auth/
+    #
+    # # htpasswdの設定
+    #
+    # docker-compose exec auth-utils htpasswd -cb /auth/htpasswd.dat USER PASSWD
+    #
+    # (確認)
+    # docker-compose exec auth-utils htpasswd -v /auth/htpasswd.dat USER
+    #
+    # ### certの設定
+    #
+    # # CAの秘密鍵と公開鍵を作成
+    # 
+    # docker-compose exec auth-utils bash
+    # cd /cert
+    # echo 01 > ca.srl
+    # openssl genrsa -des3 -out ca-key.pem 2048
+    #    (Enter pass phrase for ca-key.pem:)
+    # openssl req -new -x509 -days 365 -key ca-key.pem -out ca.pem
+    #    Country Name (2 letter code) [AU]:JP
+    #    State or Province Name (full name) [Some-State]:
+    #    Locality Name (eg, city) []:
+    #    Organization Name (eg, company) [Internet Widgits Pty Ltd]:XXXXX
+    #    Organizational Unit Name (eg, section) []:
+    #    Common Name (e.g. server FQDN or YOUR name) []:hub.sra.gx
+    #    Email Address []:
+    # 
+    # # このCAを使ってサーバーの秘密鍵と証明書（CRT）を作成
+    # 
+    # openssl genrsa -des3 -out site-ssl.key 2048
+    #   (Enter pass phrase for site-ssl.key:)
+    # openssl req -subj '/CN=hub.sra.gx' -new -key site-ssl.key -out site-ssl.csr
+    # openssl x509 -req -days 3650 -in site-ssl.csr -CA ca.pem -CAkey ca-key.pem -out site-ssl.crt
+    # 
+    # # パスフレーズは削除しておく
+    # 	
+    # openssl rsa -in site-ssl.key -out site-ssl.key
+    # exit
+    #
+    # ### CAの公開鍵を docker deamon に設定。以下をDockerホスト(Linux)で設定。
+    #
+    # mkdir -p /etc/docker/certs.d/hub.sra.gx:443
+    # cp -ip ca.pem /etc/docker/certs.d/hub.sra.gx:443/ca.crt
+    # mkdir hub.sra.gx:443
+    # cp -ip ca.pem hub.sra.gx:443/ca.crt
+    #
+    # ### CAの公開鍵を docker deamon に設定。以下をDockerホスト(Windows)で設定。
+    #
+    # mkdir C:\ProgramData\Docker\certs.d
+    # mkdir C:\ProgramData\Docker\certs.d\hub.sra.gx443
+    # copy cert\ca.pem C:\ProgramData\Docker\certs.d\hub.sra.gx443\ca.crt
+    #
+    # ### dockerホストの docker daemin のプロキシを設定
+    #
+    # vi /etc/default/docker
+    # ...ADD BELLOW...
+    # export http_proxy="http://USER:PASSWORD@PROXYHOST:PROXYPORT"
+    # export https_proxy="http://USER:PASSWORD@PROXYHOST:PROXYPORT"
+    # export no_proxy="hub.sra.gx"

@@ -1,0 +1,67 @@
+#
+# http://deeeet.com/writing/2014/10/02/docker-private-registry-auth/
+#
+# # 初回起動
+# docker-compose build mysql.sra.gx
+# docker-compose up -d mysql.sra.gx
+# docker-compose build redmine.sra.gx
+# docker-compose up -d redmine.sra.gx
+#  (DB初期化が走るので時間がかかる。docker-compose logs -f で確認)
+# docker-compose up -d
+#
+
+version: '2'
+
+services:
+
+  redmine.sra.gx:
+    build:
+      context: .
+      dockerfile: Dockerfile.redmine
+    image: redmine.sra.gx
+    depends_on:
+      - mysql.sra.gx
+    environment:
+      - REDMINE_DB_MYSQL=mysql.sra.gx
+      - REDMINE_DB_PASSWORD=zaq1xsw2
+    volumes:
+      - ./redmine.files:/usr/src/redmine/files
+      # - ./redmine.plugins:/usr/src/redmine/plugins
+
+  mysql.sra.gx:
+    build:
+      context: .
+      dockerfile: Dockerfile.mysql
+    image: mysql.sra.gx
+    environment:
+      - LANG=utf8
+      - MYSQL_DATABASE=redmine
+      - MYSQL_ROOT_PASSWORD=zaq1xsw2
+    volumes:
+      - ./mysql.data:/var/lib/mysql
+
+  rproxy:
+    extends:
+      file: rproxy/docker-compose.yml
+      service: rproxy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - APT_SERVER_NAME=apt.sra.gx
+      - DOCKER_HUB_SERVER_NAME=hub.sra.gx
+      - REDMINE_SERVER_NAME=redmine.sra.gx
+    volumes:
+      - ./hub.sra.gx/auth:/auth
+      - ./hub.sra.gx/cert:/cert
+      - ./conf.d:/etc/apache2/conf.d
+
+  hub.sra.gx:
+    extends:
+      file: hub.sra.gx/docker-compose.yml
+      service: hub.sra.gx
+
+  apt.sra.gx:
+    extends:
+      file: apt.sra.gx/docker-compose.yml
+      service: apt.sra.gx
